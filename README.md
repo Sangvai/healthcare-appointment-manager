@@ -213,8 +213,13 @@ All 24 tests pass (verified on Python 3.14 / Windows, SQLite backend for test is
 
 ## Deployment
 
-- **Frontend → Vercel**: import the repo, set root directory to `frontend/`, add `NEXT_PUBLIC_API_BASE_URL` pointing at the deployed backend.
-- **Backend → Render**: new Web Service from `backend/`, build command `pip install -r requirements.txt`, start command `alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT`. Add a Render **Background Worker** for `celery -A app.workers.celery_app worker` and one for `celery -A app.workers.celery_app beat`.
-- **Postgres → Neon/Supabase/Render Postgres**: copy the connection string into `DATABASE_URL`.
-- **Redis → Upstash/Render Redis**: copy the connection string into `REDIS_URL` / `CELERY_BROKER_URL`.
-- Update `GOOGLE_REDIRECT_URI` and the Google Cloud OAuth client's authorized redirect URI to the deployed backend URL, and `BACKEND_CORS_ORIGINS`/`FRONTEND_URL` to the deployed frontend URL.
+`render.yaml` at the repo root is a Render **Blueprint** — it defines the backend web service plus the Celery worker and beat background workers, and a shared env var group, in one file. Steps:
+
+1. **Postgres → [Neon](https://neon.tech)** (or Supabase/Render Postgres): sign up, create a project, copy the connection string.
+2. **Redis → [Upstash](https://upstash.com)** (or Render Redis): sign up, create a Redis database, copy the connection string (use it for both `REDIS_URL` and `CELERY_BROKER_URL`; a second Upstash DB or `/1` suffix works for `CELERY_RESULT_BACKEND`).
+3. **Backend + workers → [Render](https://render.com)**: New → Blueprint → connect this GitHub repo → Render reads `render.yaml` and proposes the web service + 2 workers. Before applying, fill in the `healthcare-shared-env` group's values: `DATABASE_URL`, `REDIS_URL`, `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND`, `OPENAI_API_KEY`, `SENDGRID_API_KEY`, `SENDGRID_FROM_EMAIL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` (set to `https://<your-backend>.onrender.com/api/v1/google/callback`), `FRONTEND_URL`, `BACKEND_CORS_ORIGINS` (JSON array with your Vercel URL). `JWT_SECRET_KEY` is auto-generated. Deploy — `alembic upgrade head` runs automatically on each deploy via the start command.
+4. **Frontend → [Vercel](https://vercel.com)**: New Project → import the same GitHub repo → set **Root Directory** to `frontend` → add env var `NEXT_PUBLIC_API_BASE_URL=https://<your-backend>.onrender.com/api/v1` → Deploy.
+5. Go back to Render and update `FRONTEND_URL`/`BACKEND_CORS_ORIGINS` with the real Vercel URL, and update the Google Cloud OAuth client's authorized redirect URI to match `GOOGLE_REDIRECT_URI`.
+6. Run the seed script once against the live database (Render Shell tab on the backend service): `python -m app.seed`.
+
+Since these steps require your own accounts and API keys on each platform, they need to be done from your side — happy to walk through any specific step.
